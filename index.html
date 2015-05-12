@@ -1,0 +1,45 @@
+<html>
+<head>
+  <title>First Pixi program</title>
+  <style>
+      body {
+          margin: 0;
+          padding: 0;
+          background-color: #000000;
+      }
+  </style>
+  <script src="jquery-2.1.1.min.js"></script>
+  <script src="pixi.js"></script>
+  <script type="text/javascript">
+  $(function() {
+    var renderer = PIXI.autoDetectRenderer(800,600);
+    document.body.appendChild(renderer.view);
+
+    var stage = new PIXI.Container();
+
+    var bunnyTexture = PIXI.Texture.fromImage("bunny.png");
+    var bunny = new PIXI.Sprite(bunnyTexture);
+
+    bunny.position.x = 400;
+    bunny.position.y = 300;
+
+    bunny.scale.x = 2;
+    bunny.scale.y = 2;
+
+    stage.addChild(bunny);
+
+    requestAnimationFrame( animate );
+
+    function animate() {
+      bunny.rotation += 0.1;
+      requestAnimationFrame( animate );
+      renderer.render(stage);
+    }
+  });
+  </script>
+
+</head>
+<body>
+
+</body>
+</html>
