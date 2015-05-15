@@ -1,3 +1,36 @@
+// Constants
+
+var Const = (function() {
+  var lerpFun  = function(t) { return (1 + Math.sin(10*t))/2; }
+
+  // Constants
+  return({
+    selector: { colorRange: { selected: { to: { r: 0, g: 0, b: 255 },
+                                          from:  { r: 0, g: 0, b: 127 } },
+                              unselected: { to: { r: 100, g: 100, b: 100 },
+                                            from: { r: 50, g: 50, b: 50} }
+                            },
+                lerpFun:    lerpFun,
+                radius:     5 // radius within a unit that you can select it
+              },
+    unit: { color:   { r: 0,   g: 50, b: 200},
+            size:     1,
+            velocity: 1,
+            health:  50 },
+    enemy: { color:   { r: 200,   g: 50, b: 0 },
+             size:    1,
+             health:  50 },
+    healthMeter: { background: { r:50, g:0, b:0}, foreground: { r: 180, g: 0, b: 0} }
+
+    });
+})();
+
+
+var UnitState = { Stationary: 0, Moving: 1 };
+
+//--------------------------------------------------------------------------------------------------
+
+
 // Linear interpolation between two colours.
 // f must be a function which takes a time argument and returns a value between 0 and 1.
 // t is the time value
@@ -25,6 +58,10 @@ var col2rgb = function(c) {
   return "rgb(" + Math.floor(c.r) +","+Math.floor(c.g)+","+Math.floor(c.b)+"," + alpha+")";
 };
 
+var dist = function(p1, p2) {
+  var dx = p1.x - p2.x, dy = p1.y - p2.y;
+  return(Math.sqrt(dx*dx + dy*dy));
+};
 
 var Keyboard = function() {
   var keypresses = [];
@@ -95,6 +132,10 @@ var Mouse = function(container_id, worldBounds) {
     return (buttons[button] === true);
   };
 
+  var leftDown   = function() { return down(MouseButton.Left) };
+  var rightDown  = function() { return down(MouseButton.Right)};
+  var middleDown = function() { return down(MouseButton.Middle)};
+
   var location = function() {
     return loc;
   };
@@ -112,8 +153,11 @@ var Mouse = function(container_id, worldBounds) {
   container.mousemove(mousemoveHandler);
   //------------------------------------------------------------------------------------------------
   return({
-    down: down,
-    location: location
+    down:       down,
+    leftDown:   leftDown,
+    rightDown:  rightDown,
+    middleDown: middleDown,
+    location:   location
   });
 
 };
@@ -133,16 +177,59 @@ var Graphics = function(container_id, worldBounds) {
     return cp;
   };
 
-  var drawSelector = function(p, r, elapsedTime) {
-    var cp = conv(p);
-
-
-    var col = lerp(selector_col_range.from, selector_col_range.to, selector_lerp_fun, elapsedTime);
-    var circle = raph.circle(cp.x,cp.y, r*scale);
-    var circleWidth = r/10*scale;
+  var drawSelector = function(unit, elapsedTime) {
+    var cp          = conv(unit);
+    var sel         = Const.selector;
+    var range       = unit.selected ? sel.colorRange.selected : sel.colorRange.unselected;
+    var col         = lerp(range.from, range.to, sel.lerpFun, elapsedTime);
+    var circle      = raph.circle(cp.x,cp.y, Const.selector.radius*scale);
+    var circleWidth = Const.selector.radius/10*scale;
     circle.attr("stroke", col2rgb(col)).attr("stroke-width", circleWidth);
-
   }
+
+
+  var drawUnit = function(unit) {
+    var i, circ, cp;
+    cp = conv(unit);
+    circ = raph.circle(cp.x, cp.y, Const.unit.size*scale);
+    circ.attr("fill", col2rgb(Const.unit.color));
+    if ( unit.selected ) {
+      drawHealthMeter(unit);
+    }
+  };
+
+
+  var drawEnemy = function(enemy) {
+    var i, circ, cp;
+    cp = conv(enemy);
+    circ = raph.circle(cp.x, cp.y, Const.enemy.size*scale);
+    circ.attr("fill", col2rgb(Const.enemy.color));
+    if ( enemy.attacked ) {
+      drawHealthMeter(enemy);
+    }
+
+  };
+
+
+
+  // Draws a health meter slightly above a unit
+  var drawHealthMeter = function(unit) {
+    var dy = Const.unit.size*2,
+        dx = Const.unit.size*1.5,
+        p1 = conv({ x: unit.x - dx, y: unit.y + dy }),
+        p2 = conv({ x: unit.x + dx, y: unit.y + dy });
+
+    var percent = unit.health / Const.unit.health;
+        strokeWidth = 0.5*scale;
+
+    raph.path(["M", p1.x, p1.y, "L", p2.x, p2.y ]).
+         attr({ stroke: col2rgb(Const.healthMeter.background),
+                "stroke-width": strokeWidth });
+    raph.path(["M", p1.x, p1.y, "L", (1.0 - percent)*p1.x + percent*p2.x, p2.y]).
+         attr({ stroke: col2rgb(Const.healthMeter.foreground),
+                "stroke-width": strokeWidth});
+  };
+
   //------------------------------------------------------------------------------------------------
   // Initialise
 
@@ -150,34 +237,102 @@ var Graphics = function(container_id, worldBounds) {
   rect = container[0].getBoundingClientRect();
   raph = Raphael(container[0], rect.width, rect.height);
 
-  selector_col_range = { to: { r: 0, g: 0, b: 255 } , from:  { r: 0, g: 0, b: 127 } };
-  selector_speed = 2;
-  selector_lerp_fun = function(t) { return (1 + Math.sin(2*t))/2; };
   scale = rect.width / worldBounds.width;
 
   //------------------------------------------------------------------------------------------------
   return({
-    drawSelector: drawSelector,
-    clear: function() { raph.clear(); }
+    drawSelector:    drawSelector,
+    drawUnit:        drawUnit,
+    drawEnemy:       drawEnemy,
+    drawHealthMeter: drawHealthMeter,
+    clear:        function() { raph.clear(); },
   });
 };
 
 
 //--------------------------------------------------------------------------------------------------
 var Game = function (canvas_id) {
-  var canvas, width, height, startTime, keyboard, g;
+  var canvas, width, height, startTime, keyboard, g, st;
 
   var start = function() {
     window.requestAnimationFrame(animate, canvas);
   };
 
+  // may return 'false' if there are no units to select
+  var closestSelectableUnit = function() {
+    var i, minD = 1e8, minUnit = false, d, unit;
+    loc = mouse.location();
+    for (i in st.units) {
+      unit = st.units[i];
+      d = dist(loc, st.units[i]);
+      if ( d <= Const.selector.radius && d < minD) {
+        minD = d;
+        minUnit = unit;
+      }
+    }
+    return minUnit;
+  };
+
+  var moveUnit = function(unit) {
+    var ang, p1, p2;
+    if ( unit.state.id === UnitState.Moving ) {
+      if ( dist(unit, unit.state.movingTo) < Const.unit.size/2 ) {
+        unit.state = { id: UnitState.Stationary };
+      } else {
+        p2 = unit.state.movingTo;
+        ang = Math.atan2(p2.y - unit.y, p2.x - unit.x);
+        unit.x += Const.unit.velocity*Math.cos(ang);
+        unit.y += Const.unit.velocity*Math.sin(ang);
+      }
+    }
+
+  };
+
+
   var animate = function() {
-    var p;
+    var p, i, unit, mouseDown;
     g.clear();
     var elapsedTime = ((new Date()).getTime() - startTime)/1000.0;
 
     p = mouse.location();
-    g.drawSelector(p,5, elapsedTime);
+
+    unit = closestSelectableUnit();
+
+    mouseDown = mouse.leftDown();
+
+    if ( unit ) {
+      g.drawSelector(unit, elapsedTime);
+      if ( !unit.selected && mouseDown ) {
+        if (st.selectedUnit) { st.selectedUnit.selected = false }
+        unit.selected = true;
+        st.selectedUnit = unit;
+      }
+    }
+
+    if ( mouseDown && st.selectedUnit && dist(st.selectedUnit, p) > Const.selector.radius ) {
+      st.selectedUnit.state = { id: UnitState.Moving, movingTo: p };
+    }
+
+    for (i in st.units) {
+      unit = st.units[i];
+      // draw
+      g.drawUnit(st.units[i]);
+      if (unit.selected) {
+        g.drawSelector(unit, elapsedTime);
+      }
+
+      // move
+      moveUnit(unit);
+
+    }
+
+    for (i in st.enemies) {
+      g.drawEnemy(st.enemies[i]);
+    }
+
+
+
+
     window.requestAnimationFrame(animate, canvas);
   }
 
@@ -194,6 +349,21 @@ var Game = function (canvas_id) {
   startTime = (new Date()).getTime();
   keyboard  = Keyboard();
   g = Graphics(canvas_id, worldBounds);
+  st = { units: [ { x: 60, y: 20,
+                    health: Const.unit.health/2,
+                    state: { id: UnitState.Stationary },
+                    attacked: false,
+                    selected: false
+                  },
+                  { x: 80, y: 20,
+                    health: Const.unit.health,
+                    state: { id: UnitState.Stationary } ,
+                    attacked: false,
+                    selected: false
+                  }],
+         enemies: [ { x: 20, y: 80, attacked: false}],
+         selectedUnit: false,
+       };
 
   //------------------------------------------------------------------------------------------------
   return ({
