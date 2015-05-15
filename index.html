@@ -1,6 +1,6 @@
 <html>
 <head>
-  <title>First Pixi program</title>
+  <title>BitRot</title>
   <style>
       body {
           margin: 0;
@@ -9,37 +9,19 @@
       }
   </style>
   <script src="jquery-2.1.1.min.js"></script>
-  <script src="pixi.js"></script>
+  <script src="raphael-2.1.4.min.js"></script>
+  <script src="game.js"></script>
   <script type="text/javascript">
-  $(function() {
-    var renderer = PIXI.autoDetectRenderer(800,600);
-    document.body.appendChild(renderer.view);
-
-    var stage = new PIXI.Container();
-
-    var bunnyTexture = PIXI.Texture.fromImage("bunny.png");
-    var bunny = new PIXI.Sprite(bunnyTexture);
-
-    bunny.position.x = 400;
-    bunny.position.y = 300;
-
-    bunny.scale.x = 2;
-    bunny.scale.y = 2;
-
-    stage.addChild(bunny);
-
-    requestAnimationFrame( animate );
-
-    function animate() {
-      bunny.rotation += 0.1;
-      requestAnimationFrame( animate );
-      renderer.render(stage);
-    }
-  });
+    $('document').ready(function () {
+      game = Game("canvas");
+      game.start();
+    });
   </script>
 
 </head>
-<body>
+<body style="background: #FFFFFF;">
+
+<div id="canvas" style="width: 800px; height: 600px; background: #000000;"></div>
 
 </body>
 </html>
